@@ -14,4 +14,6 @@ COPY backend/ .
 EXPOSE 8000
 
 # Railway uses PORT env var
+# Railway deploys via Docker
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+
