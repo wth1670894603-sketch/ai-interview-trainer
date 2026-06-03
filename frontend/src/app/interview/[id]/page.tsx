@@ -7,7 +7,7 @@ import { Interview, InterviewQuestion, BatchEvaluation } from '@/types'
 import { categoryLabel, scoreColor } from '@/lib/utils'
 import {
   Mic, MicOff, Send, ArrowRight, CheckCircle, Loader2,
-  Clock, Star, MessageSquare, ChevronLeft,
+  Clock, Star, MessageSquare, ChevronLeft, Square, Play,
 } from 'lucide-react'
 
 type Phase = 'loading' | 'ready' | 'question' | 'answering' | 'evaluating' | 'feedback' | 'completed'
@@ -127,12 +127,6 @@ export default function InterviewSessionPage() {
     }
   }
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
-
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -243,49 +237,15 @@ export default function InterviewSessionPage() {
 
         {/* 回答画面 */}
         {phase === 'answering' && (
-          <div className="animate-fade-in">
-            {/* 質問（固定表示） */}
-            <div className="bg-white rounded-2xl border p-4 mb-4">
-              <div className="text-sm text-blue-600 mb-1">{categoryLabel(currentQ?.question_category || '')}</div>
-              <p className="font-medium">{currentQ?.question_text}</p>
-            </div>
-
-            {/* 録音インジケーター */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-3 h-3 rounded-full bg-red-500 recording-pulse" />
-              <span className="text-sm font-medium text-red-500">回答中...</span>
-              <span className="text-sm text-slate-400 ml-auto">{formatTime(elapsed)}</span>
-            </div>
-
-            {/* 回答入力 */}
-            <div className="mb-4">
-              <textarea
-                ref={textAreaRef}
-                value={answerText}
-                onChange={e => setAnswerText(e.target.value)}
-                placeholder="ここに回答を入力してください..."
-                className="w-full h-40 p-4 border border-slate-200 rounded-xl resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
-              />
-            </div>
-
-            {/* 操作ボタン */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setPhase('question')}
-                className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
-              >
-                戻る
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!answerText.trim()}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                <Send size={18} />
-                回答を送信
-              </button>
-            </div>
-          </div>
+          <RecordingArea
+            currentQ={currentQ}
+            onSubmit={handleSubmit}
+            onBack={() => setPhase('question')}
+            answerText={answerText}
+            setAnswerText={setAnswerText}
+            elapsed={elapsed}
+            interviewId={interviewId}
+          />
         )}
 
         {/* 評価中 */}
@@ -424,4 +384,130 @@ export default function InterviewSessionPage() {
       </main>
     </div>
   )
+}
+
+/* 音声録音 + テキスト入力 コンポーネント */
+function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, elapsed, interviewId}: {
+  currentQ: InterviewQuestion | null
+  onSubmit: () => void
+  onBack: () => void
+  answerText: string
+  setAnswerText: (v: string) => void
+  elapsed: number
+  interviewId: string
+}) {
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRecorder = useRef<MediaRecorder | null>(null)
+  const chunks = useRef<Blob[]>([])
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      mediaRecorder.current = recorder
+      chunks.current = []
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.current.push(e.data)
+      }
+
+      recorder.onstop = async () => {
+        // ストリーム停止
+        stream.getTracks().forEach(t => t.stop())
+
+        const blob = new Blob(chunks.current, { type: 'audio/webm' })
+        if (blob.size < 1000) return
+
+        setTranscribing(true)
+        try {
+          const result = await api.submitAudioAnswer(interviewId, currentQ?.order_index ?? 0, blob)
+          setAnswerText(result.transcript || '')
+        } catch (err: any) {
+          console.error('STT failed:', err)
+        } finally {
+          setTranscribing(false)
+        }
+      }
+
+      recorder.start()
+      setRecording(true)
+    } catch (err) {
+      alert('マイクへのアクセスを許可してください')
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorder.current?.stop()
+    setRecording(false)
+  }
+
+  return (
+    <div className="animate-fade-in">
+      {/* 質問 */}
+      <div className="bg-white rounded-2xl border p-4 mb-4">
+        <div className="text-sm text-blue-600 mb-1">{categoryLabel(currentQ?.question_category || '')}</div>
+        <p className="font-medium">{currentQ?.question_text}</p>
+      </div>
+
+      {/* 録音ボタン */}
+      <div className="flex justify-center mb-4">
+        {!recording ? (
+          <button
+            onClick={startRecording}
+            disabled={transcribing}
+            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white flex items-center justify-center shadow-lg transition cursor-pointer"
+          >
+            {transcribing ? (
+              <Loader2 size={24} className="animate-spin" />
+            ) : (
+              <Mic size={28} />
+            )}
+          </button>
+        ) : (
+          <div className="text-center">
+            <button
+              onClick={stopRecording}
+              className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg recording-pulse cursor-pointer"
+            >
+              <Square size={20} />
+            </button>
+            <p className="text-sm text-red-500 mt-2">録音中... {formatTime(elapsed)}</p>
+            <p className="text-xs text-slate-400 mt-1">もう一度押して終了</p>
+          </div>
+        )}
+      </div>
+
+      {/* 文字起こし結果 + 手動編集 */}
+      <div className="mb-4">
+        <textarea
+          value={answerText}
+          onChange={e => setAnswerText(e.target.value)}
+          placeholder={transcribing ? '文字起こし中...' : '録音するか、ここに直接入力...'}
+          className="w-full h-36 p-4 border border-slate-200 rounded-xl resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm"
+        />
+      </div>
+
+      {/* 操作 */}
+      <div className="flex gap-3">
+        <button onClick={onBack} className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer">
+          戻る
+        </button>
+        <button
+          onClick={onSubmit}
+          disabled={!answerText.trim() || transcribing}
+          className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+        >
+          <Send size={18} />
+          回答を送信
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function formatTime(s: number) {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${sec.toString().padStart(2, '0')}`
 }

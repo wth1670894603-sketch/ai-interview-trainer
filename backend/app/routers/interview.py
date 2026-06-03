@@ -1,6 +1,6 @@
 """面接セッションAPI"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -105,6 +105,58 @@ def submit_answer(
         raise HTTPException(status_code=404, detail="質問が見つかりません")
 
     return InterviewQuestionResponse.model_validate(q)
+
+
+@router.post("/{interview_id}/questions/{order}/answer/audio")
+async def submit_audio_answer(
+    interview_id: str,
+    order: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """音声回答をアップロード → Whisperで文字起こし"""
+    from ..services.stt_service import STTService
+
+    engine = InterviewEngine(db)
+    interview = engine.get_interview_detail(interview_id)
+    if not interview or interview.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="面接が見つかりません")
+
+    # 一時ファイルに保存
+    import tempfile, os
+    content = await file.read()
+    suffix = os.path.splitext(file.filename or "audio.webm")[1] or ".webm"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(content)
+        tmp.close()
+
+        # Whisperで文字起こし
+        stt = STTService()
+        result = await stt.transcribe(tmp.name, language="ja")
+
+        # 回答を保存
+        q = engine.submit_answer(
+            interview_id=interview_id,
+            question_order=order,
+            answer_text=result["text"],
+            duration=result.get("duration", 0),
+            audio_path=tmp.name,
+        )
+        if not q:
+            raise HTTPException(status_code=404, detail="質問が見つかりません")
+
+        return {
+            "transcript": result["text"],
+            "duration": result.get("duration", 0),
+            "question": InterviewQuestionResponse.model_validate(q),
+        }
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except:
+            pass
 
 
 @router.get("/{interview_id}/next/{current_order}", response_model=InterviewQuestionResponse)

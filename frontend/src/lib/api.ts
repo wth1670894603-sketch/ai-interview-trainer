@@ -139,6 +139,30 @@ class ApiClient {
       { method: 'POST' }
     )
   }
+
+  /* 音声回答 */
+  async submitAudioAnswer(interviewId: string, order: number, blob: Blob) {
+    const formData = new FormData()
+    formData.append('file', blob, 'answer.webm')
+
+    const headers: Record<string, string> = {}
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+
+    const res = await fetch(`${API_BASE}/api/interviews/${interviewId}/questions/${order}/answer/audio`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '音声認識に失敗しました' }))
+      throw new Error(err.detail || `HTTP ${res.status}`)
+    }
+
+    return res.json()
+  }
 }
 
 export const api = new ApiClient()
