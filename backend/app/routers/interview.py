@@ -127,6 +127,34 @@ def get_next_question(
     return InterviewQuestionResponse.model_validate(next_q)
 
 
+@router.get("/stats/progress", response_model=list[dict])
+def get_progress(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """面接スコアの推移"""
+    interviews = (
+        db.query(Interview)
+        .filter(
+            Interview.user_id == current_user.id,
+            Interview.status == "completed",
+            Interview.overall_score.isnot(None),
+        )
+        .order_by(Interview.completed_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": iv.id,
+            "date": iv.completed_at.isoformat() if iv.completed_at else "",
+            "score": iv.overall_score,
+            "company": iv.target_company or iv.target_industry or "一般",
+            "question_count": iv.question_count,
+        }
+        for iv in interviews
+    ]
+
+
 @router.post("/{interview_id}/complete", response_model=InterviewResponse)
 def complete_interview(
     interview_id: str,
