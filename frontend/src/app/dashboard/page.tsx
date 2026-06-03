@@ -8,13 +8,15 @@ import { formatDate, scoreColor, categoryLabel } from '@/lib/utils'
 import { COMPANIES, POSITIONS, MAJORS, UNIVERSITIES, INDUSTRIES, OTHER_OPTION } from '@/lib/constants'
 import {
   FileText, Plus, BarChart3, Target, Clock, ChevronRight,
-  LogOut, UserCircle, Shield,
+  LogOut, UserCircle, Shield, TrendingUp,
 } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [interviews, setInterviews] = useState<Interview[]>([])
+  const [progress, setProgress] = useState<{date:string;score:number;company:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewModal, setShowNewModal] = useState(false)
 
@@ -28,9 +30,11 @@ export default function DashboardPage() {
     Promise.all([
       api.getProfile(),
       api.getInterviews(),
-    ]).then(([u, ivs]) => {
+      api.request<{date:string;score:number;company:string}[]>('/api/interviews/stats/progress'),
+    ]).then(([u, ivs, p]) => {
       setUser(u)
       setInterviews(ivs)
+      setProgress(p)
     }).catch(() => {
       router.push('/login')
     }).finally(() => setLoading(false))
@@ -107,6 +111,43 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* 成長曲線 */}
+        {progress.length >= 2 && (
+          <div className="bg-white rounded-xl border p-5 mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={20} className="text-green-500" />
+              <h2 className="text-lg font-semibold">成長曲線</h2>
+              <span className="text-sm text-slate-400 ml-auto">
+                {progress.length}回の面接
+              </span>
+            </div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={progress}>
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={v => new Date(v).toLocaleDateString('ja-JP', {month:'short', day:'numeric'})}
+                    tick={{fontSize:12}}
+                  />
+                  <YAxis domain={[0, 100]} tick={{fontSize:12}} />
+                  <Tooltip
+                    labelFormatter={v => new Date(v).toLocaleDateString('ja-JP')}
+                    formatter={(v:number) => [`${Math.round(v)}点`, 'スコア']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    dot={{fill:'#2563eb', r:4}}
+                    activeDot={{r:6}}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">面接履歴</h2>
