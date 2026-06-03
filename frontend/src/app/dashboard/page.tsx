@@ -76,6 +76,10 @@ export default function DashboardPage() {
               管理
             </button>
           )}
+            <button onClick={() => router.push('/es')} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-sm rounded-lg transition cursor-pointer">
+              <FileText size={14} />
+              ES
+            </button>
           <span className="text-sm text-slate-500">{user?.display_name || user?.username}</span>
             <button onClick={logout} className="p-2 hover:bg-slate-100 rounded-lg transition cursor-pointer">
               <LogOut size={20} className="text-slate-400" />

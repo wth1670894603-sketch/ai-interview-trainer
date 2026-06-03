@@ -14,6 +14,7 @@ from .routers import (
     user_router,
     admin_questions_router,
     setup_router,
+    es_router,
 )
 
 
@@ -47,6 +48,7 @@ app.include_router(interview_router)
 app.include_router(evaluation_router)
 app.include_router(admin_questions_router)
 app.include_router(setup_router)
+app.include_router(es_router)
 
 
 @app.get("/api/health")

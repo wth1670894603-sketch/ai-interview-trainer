@@ -4,6 +4,7 @@ from .evaluation import router as evaluation_router
 from .user import router as user_router
 from .admin_questions import router as admin_questions_router
 from .setup import router as setup_router
+from .es import router as es_router
 
 __all__ = [
     "auth_router",
@@ -12,4 +13,5 @@ __all__ = [
     "user_router",
     "admin_questions_router",
     "setup_router",
+    "es_router",
 ]
