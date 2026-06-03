@@ -46,26 +46,26 @@ export default function InterviewSessionPage() {
       setTotalQuestions(iv.question_count)
 
       if (iv.status === 'in_progress') {
-        // 進行中の面接：未回答の最初の質問を表示
         const unanswered = iv.questions.find(q => !q.answer_text)
         if (unanswered) {
           setCurrentQ(unanswered)
           setPhase('question')
+          return
         }
-      } else if (iv.status === 'completed') {
-        // 完了済み
+      }
+      if (iv.status === 'completed') {
         setPhase('completed')
-        // 評価を取得
         api.evaluateInterview(interviewId).then(ev => {
           setEvaluation(ev)
         }).catch(() => {})
-      } else {
-        // pending: 開始
-        setPhase('ready')
+        return
       }
+      // pending: 開始
+      setPhase('ready')
     }).catch(err => {
       setError(err.message)
-    }).finally(() => setPhase('ready'))
+      setPhase('ready')
+    })
   }, [interviewId, router])
 
   // 経過時間
@@ -473,9 +473,7 @@ function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, e
       }
 
       recorder.onstop = async () => {
-        // ストリーム停止
         stream.getTracks().forEach(t => t.stop())
-
         const blob = new Blob(chunks.current, { type: 'audio/webm' })
         if (blob.size < 1000) return
 
@@ -483,9 +481,7 @@ function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, e
         try {
           const result = await api.submitAudioAnswer(interviewId, currentQ?.order_index ?? 0, blob)
           setAnswerText(result.transcript || '')
-          if (result.analysis) {
-            onAnalysis?.(result.analysis)
-          }
+          if (result.analysis) onAnalysis?.(result.analysis)
         } catch (err: any) {
           console.error('STT failed:', err)
         } finally {
@@ -507,59 +503,73 @@ function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, e
 
   return (
     <div className="animate-fade-in">
-      {/* 質問 */}
+      {/* 質問（常に固定表示） */}
       <div className="bg-white rounded-2xl border p-4 mb-4">
         <div className="text-sm text-blue-600 mb-1">{categoryLabel(currentQ?.question_category || '')}</div>
         <p className="font-medium">{currentQ?.question_text}</p>
       </div>
 
-      {/* 録音ボタン */}
-      <div className="flex justify-center mb-4">
-        {!recording ? (
+      {/* 録音フェーズ */}
+      {!recording && !transcribing && (
+        <div className="flex flex-col items-center mb-4">
           <button
             onClick={startRecording}
             disabled={transcribing}
-            className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white flex items-center justify-center shadow-lg transition cursor-pointer"
+            className="w-20 h-20 rounded-full bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white flex items-center justify-center shadow-lg transition cursor-pointer"
           >
-            {transcribing ? (
-              <Loader2 size={24} className="animate-spin" />
-            ) : (
-              <Mic size={28} />
-            )}
+            <Mic size={32} />
           </button>
-        ) : (
-          <div className="text-center">
-            <button
-              onClick={stopRecording}
-              className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg recording-pulse cursor-pointer"
-            >
-              <Square size={20} />
-            </button>
-            <p className="text-sm text-red-500 mt-2">録音中... {formatTime(elapsed)}</p>
-            <p className="text-xs text-slate-400 mt-1">もう一度押して終了</p>
+          <p className="text-sm text-slate-500 mt-3">🎤 マイクをクリックして回答を録音</p>
+          <p className="text-xs text-slate-400 mt-1">または下のテキスト欄に直接入力してもOK</p>
+        </div>
+      )}
+
+      {/* 録音中 */}
+      {recording && (
+        <div className="flex flex-col items-center mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-3 h-3 rounded-full bg-red-500 recording-pulse" />
+            <span className="text-sm font-medium text-red-500">録音中...</span>
+            <span className="text-sm text-slate-400">{formatTime(elapsed)}</span>
           </div>
-        )}
-      </div>
+          <button
+            onClick={stopRecording}
+            className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition cursor-pointer"
+          >
+            <Square size={18} className="inline mr-2" />
+            回答終了（録音を停止）
+          </button>
+          <p className="text-xs text-slate-400 mt-2">話し終わったらこのボタンを押してください</p>
+        </div>
+      )}
+
+      {/* 文字起こし中 */}
+      {transcribing && (
+        <div className="flex flex-col items-center mb-6">
+          <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
+          <p className="text-sm text-slate-500">音声を文字に変換中...</p>
+        </div>
+      )}
 
       {/* 文字起こし結果 + 手動編集 */}
       <div className="mb-4">
         <textarea
           value={answerText}
           onChange={e => setAnswerText(e.target.value)}
-          placeholder={transcribing ? '文字起こし中...' : '録音するか、ここに直接入力...'}
+          placeholder={'録音するか、ここに直接入力してください...'}
           className="w-full h-36 p-4 border border-slate-200 rounded-xl resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm"
         />
       </div>
 
-      {/* 操作 */}
+      {/* 操作ボタン */}
       <div className="flex gap-3">
-        <button onClick={onBack} className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer">
+        <button onClick={onBack} className="px-5 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition cursor-pointer">
           戻る
         </button>
         <button
           onClick={onSubmit}
           disabled={!answerText.trim() || transcribing}
-          className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+          className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl flex items-center justify-center gap-2 transition text-base cursor-pointer"
         >
           <Send size={18} />
           回答を送信
