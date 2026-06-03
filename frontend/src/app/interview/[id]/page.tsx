@@ -8,6 +8,7 @@ import { categoryLabel, scoreColor } from '@/lib/utils'
 import {
   Mic, MicOff, Send, ArrowRight, CheckCircle, Loader2,
   Clock, Star, MessageSquare, ChevronLeft, Square, Play,
+  Gauge, Volume2, MessageCircle,
 } from 'lucide-react'
 
 type Phase = 'loading' | 'ready' | 'question' | 'answering' | 'evaluating' | 'feedback' | 'completed'
@@ -22,6 +23,7 @@ export default function InterviewSessionPage() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [answerText, setAnswerText] = useState('')
   const [evaluation, setEvaluation] = useState<BatchEvaluation | null>(null)
+  const [voiceMetrics, setVoiceMetrics] = useState<any>(null)
   const [error, setError] = useState('')
   const [questionIndex, setQuestionIndex] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(0)
@@ -245,6 +247,7 @@ export default function InterviewSessionPage() {
             setAnswerText={setAnswerText}
             elapsed={elapsed}
             interviewId={interviewId}
+            onAnalysis={setVoiceMetrics}
           />
         )}
 
@@ -310,6 +313,62 @@ export default function InterviewSessionPage() {
               {evaluation.feedback_summary && (
                 <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-800 mb-4">
                   {evaluation.feedback_summary}
+                </div>
+              )}
+
+              {/* 音声分析メトリクス */}
+              {voiceMetrics && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium text-slate-600 mb-3 flex items-center gap-2">
+                    <Volume2 size={16} /> 音声分析
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* 語速 */}
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Gauge size={14} className="text-blue-500" />
+                        <span className="text-xs font-medium text-slate-500">語速</span>
+                      </div>
+                      <p className="text-lg font-bold">{voiceMetrics.speed?.chars_per_min || '-'}</p>
+                      <p className="text-xs text-slate-400">文字/分</p>
+                      <p className={`text-xs mt-1 ${voiceMetrics.speed?.optimal ? 'text-green-600' : 'text-amber-600'}`}>
+                        {voiceMetrics.speed?.judgment || ''}
+                      </p>
+                    </div>
+
+                    {/* フィラー */}
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <MessageCircle size={14} className="text-purple-500" />
+                        <span className="text-xs font-medium text-slate-500">フィラー</span>
+                      </div>
+                      <p className="text-lg font-bold">{voiceMetrics.fillers?.total || 0}</p>
+                      <p className="text-xs text-slate-400">回（えー・あのー等）</p>
+                      {voiceMetrics.fillers?.fillers && Object.entries(voiceMetrics.fillers.fillers).map(([w, c]) => (
+                        <span key={w} className="text-xs text-slate-500 mr-1">「{w}」×{String(c)}</span>
+                      ))}
+                    </div>
+
+                    {/* 敬語 */}
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <MessageSquare size={14} className="text-emerald-500" />
+                        <span className="text-xs font-medium text-slate-500">敬語</span>
+                      </div>
+                      <p className={`text-lg font-bold ${(voiceMetrics.keigo?.score || 0) >= 70 ? 'text-green-600' : 'text-amber-600'}`}>
+                        {voiceMetrics.keigo?.score || 0}
+                      </p>
+                      <p className="text-xs text-slate-400">/ 100点</p>
+                      {voiceMetrics.keigo?.issues?.map((i: string, k: number) => (
+                        <p key={k} className="text-xs text-red-500 mt-0.5">⚠ {i}</p>
+                      ))}
+                    </div>
+                  </div>
+                  {voiceMetrics.keigo?.suggestions?.length > 0 && (
+                    <div className="mt-2 bg-green-50 rounded-lg p-2 text-xs text-green-700">
+                      💡 {voiceMetrics.keigo.suggestions.join(' / ')}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -387,7 +446,7 @@ export default function InterviewSessionPage() {
 }
 
 /* 音声録音 + テキスト入力 コンポーネント */
-function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, elapsed, interviewId}: {
+function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, elapsed, interviewId, onAnalysis}: {
   currentQ: InterviewQuestion | null
   onSubmit: () => void
   onBack: () => void
@@ -395,6 +454,7 @@ function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, e
   setAnswerText: (v: string) => void
   elapsed: number
   interviewId: string
+  onAnalysis?: (v: any) => void
 }) {
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -423,6 +483,9 @@ function RecordingArea({currentQ, onSubmit, onBack, answerText, setAnswerText, e
         try {
           const result = await api.submitAudioAnswer(interviewId, currentQ?.order_index ?? 0, blob)
           setAnswerText(result.transcript || '')
+          if (result.analysis) {
+            onAnalysis?.(result.analysis)
+          }
         } catch (err: any) {
           console.error('STT failed:', err)
         } finally {

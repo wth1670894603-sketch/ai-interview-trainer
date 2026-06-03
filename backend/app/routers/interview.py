@@ -147,9 +147,14 @@ async def submit_audio_answer(
         if not q:
             raise HTTPException(status_code=404, detail="質問が見つかりません")
 
+        # 音声分析
+        from ..services.voice_analysis import VoiceAnalysisService
+        analysis = VoiceAnalysisService.analyze_all(result["text"], result.get("duration", 0))
+
         return {
             "transcript": result["text"],
             "duration": result.get("duration", 0),
+            "analysis": analysis,
             "question": InterviewQuestionResponse.model_validate(q),
         }
     finally:

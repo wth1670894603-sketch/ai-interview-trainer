@@ -23,11 +23,17 @@ class LLMService:
 - 熱意 (0-100): 志望動機の一貫性、熱意の伝わり方
 - マナー (0-100): 言葉遣い、時間配分、面接マナー
 
+音声面接評価（データが提供された場合）：
+- 語速が適切か（遅すぎ／早すぎ）
+- フィラー（えー、あのー）の多さ
+- 敬語の正確さ
+
 必ずJSON形式で返答してください。"""
 
     @staticmethod
     def _build_evaluation_prompt(question: str, answer: str, category: str = "",
-                                  company: str = "", industry: str = "") -> str:
+                                  company: str = "", industry: str = "",
+                                  voice_analysis: Optional[dict] = None) -> str:
         prompt = f"""以下の面接の回答を評価してください。
 
 ## 質問
@@ -43,6 +49,17 @@ class LLMService:
             prompt += f"## 志望企業\n{company}\n"
         if industry:
             prompt += f"## 志望業界\n{industry}\n"
+        if voice_analysis:
+            prompt += "## 音声分析データ\n"
+            speed = voice_analysis.get("speed", {})
+            prompt += f"語速: {speed.get('chars_per_min', 0)}文字/分 ({speed.get('judgment', '')})\n"
+            fillers = voice_analysis.get("fillers", {})
+            prompt += f"フィラー: {fillers.get('total', 0)}回\n"
+            keigo = voice_analysis.get("keigo", {})
+            prompt += f"敬語スコア: {keigo.get('score', 0)}/100\n"
+            if keigo.get("issues"):
+                prompt += f"敬語問題: {', '.join(keigo['issues'])}\n"
+            prompt += "\n"
 
         prompt += """
 ## 評価出力（JSON）
@@ -84,10 +101,11 @@ class LLMService:
         category: str = "",
         company: str = "",
         industry: str = "",
+        voice_analysis: Optional[dict] = None,
     ) -> dict:
-        """回答をLLMで評価"""
+        """回答をLLMで評価（音声分析データ含む）"""
         prompt = LLMService._build_evaluation_prompt(
-            question, answer, category, company, industry
+            question, answer, category, company, industry, voice_analysis
         )
 
         # OpenAI 優先、なければ Claude
@@ -167,7 +185,7 @@ class LLMService:
 
     @staticmethod
     def _mock_evaluation(question: str, answer: str) -> dict:
-        """開発用モック評価"""
+        """開発用モック評価（音声分析対応版）"""
         import random
 
         base_score = random.uniform(55, 85)
@@ -176,22 +194,18 @@ class LLMService:
             "overall_score": round(base_score, 1),
             "content": {
                 "score": round(base_score + random.uniform(-5, 5), 1),
-                "feedback": "具体的なエピソードが含まれており、説得力があります。"
-                           "さらに数字を用いるとより具体性が増します。",
+                "feedback": "具体的なエピソードが含まれており、説得力があります。さらに数字を用いるとより具体性が増します。",
                 "strengths": ["論理的な構成", "前向きな姿勢"],
                 "weaknesses": ["もう少し具体的な事例が欲しい"],
             },
             "structure": {
                 "score": round(base_score + random.uniform(-10, 5), 1),
-                "feedback": "結論ファーストの構成が取れています。"
-                           "PREP法を意識するとさらに良くなります。",
+                "feedback": "結論ファーストの構成が取れています。PREP法を意識するとさらに良くなります。",
             },
             "language": {
                 "score": round(base_score + random.uniform(-5, 10), 1),
-                "feedback": "丁寧な言葉遣いができています。"
-                           "「〜と思います」がやや多いので、"
-                           "「〜と考えます」に置き換えるとより印象が良くなります。",
-                "improvements": ["「思います」→「考えます」", "もう少し簡潔に"],
+                "feedback": "丁寧な言葉遣いができています。「〜と思います」がやや多いので「〜と考えます」に置き換えるとより印象が良くなります。",
+                "improvements": [],
             },
             "passion": {
                 "score": round(base_score + random.uniform(-5, 10), 1),
@@ -199,15 +213,12 @@ class LLMService:
             },
             "manners": {
                 "score": round(base_score + random.uniform(-5, 10), 1),
-                "feedback": "適切な時間配分です。"
-                           "もう少しアイコンタクト（カメラ目線）を意識しましょう。",
+                "feedback": "適切な時間配分です。もう少しアイコンタクト（カメラ目線）を意識しましょう。",
             },
             "suggested_answer_points": [
                 "結論を最初に述べる",
                 "具体的な数字を入れる",
                 "志望動機と一貫性を持たせる",
             ],
-            "improvement_suggestions": "全体的によくまとまっています。"
-                                      "さらに具体性を増すことで、より印象的な回答になります。"
-                                      "また、時間配分にも注意しましょう。",
+            "improvement_suggestions": "全体的によくまとまっています。さらに具体性を増すことで、より印象的な回答になります。また、時間配分にも注意しましょう。",
         }
